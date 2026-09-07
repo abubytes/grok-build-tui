@@ -1869,7 +1869,7 @@ fn translate_local_submit(
             };
             InputOutcome::Action(Action::PromptBlockAnswered { row_id, choice })
         }
-        LocalQuestionKind::Fork { directive } => {
+        LocalQuestionKind::Fork { directive, background } => {
             let Some((worktree, persist_mode)) = worktree_choice_from_index(*idx) else {
                 return InputOutcome::Changed;
             };
@@ -1877,6 +1877,7 @@ fn translate_local_submit(
                 worktree,
                 directive,
                 persist_mode,
+                background,
             })
         }
         LocalQuestionKind::NewSession => {

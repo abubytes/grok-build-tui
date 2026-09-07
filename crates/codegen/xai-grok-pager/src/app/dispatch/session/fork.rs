@@ -54,17 +54,17 @@ pub(in crate::app::dispatch) fn dispatch_fork(
             app.show_toast("Cannot create worktree: not in a git repository");
             vec![]
         }
-        Some(worktree) => dispatch_fork_resolved(app, worktree, args.directive),
+        Some(worktree) => dispatch_fork_resolved(app, worktree, args.directive, args.background),
         None => {
             if in_git_repo {
                 use crate::app::app_view::WorktreeMode;
                 match app.fork_worktree_mode {
-                    WorktreeMode::Always => dispatch_fork_resolved(app, true, args.directive),
-                    WorktreeMode::Never => dispatch_fork_resolved(app, false, args.directive),
-                    WorktreeMode::Ask => open_fork_question(app, args.directive),
+                    WorktreeMode::Always => dispatch_fork_resolved(app, true, args.directive, args.background),
+                    WorktreeMode::Never => dispatch_fork_resolved(app, false, args.directive, args.background),
+                    WorktreeMode::Ask => open_fork_question(app, args.directive, args.background),
                 }
             } else {
-                dispatch_fork_resolved(app, false, args.directive)
+                dispatch_fork_resolved(app, false, args.directive, args.background)
             }
         }
     }
@@ -102,7 +102,7 @@ pub(super) fn worktree_persist_options()
 }
 /// Open the local worktree question modal on the active agent.
 /// Refuses with a toast if a question (ACP or local) is already on screen, so two questions never collide.
-fn open_fork_question(app: &mut AppView, directive: Option<String>) -> Vec<Effect> {
+fn open_fork_question(app: &mut AppView, directive: Option<String>, background: bool) -> Vec<Effect> {
     use crate::views::question_view::{LocalQuestionKind, QuestionViewState};
     use xai_grok_tools::implementations::grok_build::ask_user_question::{
         Question, QuestionOption,
@@ -145,7 +145,7 @@ fn open_fork_question(app: &mut AppView, directive: Option<String>) -> Vec<Effec
         vec![question],
         stashed,
     )
-    .with_local_kind(LocalQuestionKind::Fork { directive });
+    .with_local_kind(LocalQuestionKind::Fork { directive, background });
     agent.question_view = Some(state);
     agent.prompt.set_text("");
     vec![]
@@ -154,10 +154,14 @@ fn open_fork_question(app: &mut AppView, directive: Option<String>) -> Vec<Effec
 ///
 /// `worktree == true` reuses the [`Effect::CreateWorktreeSession`] pipeline (with `load_session_id` set to the parent session id).
 /// `worktree == false` emits [`Effect::ForkSession`], which calls `x.ai/session/fork` directly.
+///
+/// When `background == true`, the active view stays on the parent and the dashboard `attached_agent` is not re-pointed.
+/// When `background == false` (the default), the active view switches to the child and dashboard attach follows.
 pub(in crate::app::dispatch) fn dispatch_fork_resolved(
     app: &mut AppView,
     worktree: bool,
     directive: Option<String>,
+    background: bool,
 ) -> Vec<Effect> {
     let ActiveView::Agent(parent_id) = app.active_view else {
         return vec![];
@@ -227,7 +231,11 @@ pub(in crate::app::dispatch) fn dispatch_fork_resolved(
             .scrollback
             .push_block(RenderBlock::system(parent_marker));
     }
-    switch_to_agent(app, new_id, SwitchCause::Fork);
+    if background {
+        app.show_toast("Fork dispatched in background");
+    } else {
+        switch_to_agent(app, new_id, SwitchCause::Fork);
+    }
     if worktree {
         vec![Effect::CreateWorktreeSession {
             agent_id: new_id,

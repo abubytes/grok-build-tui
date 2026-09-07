@@ -19,6 +19,9 @@ pub struct ForkArgs {
     /// Optional first prompt for the new session. Whitespace-trimmed.
     /// `None` when the user typed `/fork` (with or without flags) and no directive text; the new agent then opens with no first prompt.
     pub directive: Option<String>,
+    /// When `true`, stay on the parent session instead of switching to the child.
+    /// When `false` (the default), switch to the child immediately (focus steal).
+    pub background: bool,
 }
 
 /// Parse the raw argument string after `/fork`.
@@ -29,11 +32,13 @@ pub struct ForkArgs {
 ///
 /// Errors:
 /// - `--worktree` and `--no-worktree` cannot both appear.
+/// - `--background` specified twice returns an error.
 /// - `--at <turn>` returns a friendly "not supported in this version" message.
 ///   The shell already supports the parameter as `xai_grok_shell::session::fork::ForkSessionRequest::target_prompt_index`.
 ///   A turn-picker UI is planned; rejecting the flag now tells the user the feature is deferred.
 pub fn parse_fork_args(args: &str) -> Result<ForkArgs, String> {
     let mut worktree_override: Option<bool> = None;
+    let mut background = false;
     let mut rest = args.trim_start();
 
     while !rest.is_empty() {
@@ -62,6 +67,13 @@ pub fn parse_fork_args(args: &str) -> Result<ForkArgs, String> {
                 worktree_override = Some(false);
                 rest = after.trim_start();
             }
+            "--background" | "--stay" | "--no-switch" => {
+                if background {
+                    return Err("--background specified twice".into());
+                }
+                background = true;
+                rest = after.trim_start();
+            }
             "--at" => {
                 return Err("--at is not supported in this version".into());
             }
@@ -77,6 +89,7 @@ pub fn parse_fork_args(args: &str) -> Result<ForkArgs, String> {
     Ok(ForkArgs {
         worktree_override,
         directive,
+        background,
     })
 }
 
@@ -86,7 +99,7 @@ impl SlashCommand for ForkCommand {
     slash_meta! {
         name: "fork",
         description: "Branch the current session into a peer agent",
-        usage: "/fork [--worktree|--no-worktree] [directive]",
+        usage: "/fork [--worktree|--no-worktree] [--background] [directive]",
         takes_args: true,
         args_required: false,
         session_scoped: true,
@@ -217,6 +230,78 @@ mod tests {
             parse_fork_args("--worktree    investigate").expect("extra whitespace allowed");
         assert_eq!(parsed.worktree_override, Some(true));
         assert_eq!(parsed.directive.as_deref(), Some("investigate"));
+    }
+
+    #[test]
+    fn parse_background_flag_alone_sets_background_true() {
+        let parsed = parse_fork_args("--background").expect("--background alone parse");
+        assert_eq!(parsed.worktree_override, None);
+        assert_eq!(parsed.directive, None);
+        assert!(parsed.background);
+    }
+
+    #[test]
+    fn parse_stay_flag_alone_sets_background_true() {
+        let parsed = parse_fork_args("--stay").expect("--stay alone parse");
+        assert_eq!(parsed.worktree_override, None);
+        assert_eq!(parsed.directive, None);
+        assert!(parsed.background);
+    }
+
+    #[test]
+    fn parse_no_switch_flag_alone_sets_background_true() {
+        let parsed = parse_fork_args("--no-switch").expect("--no-switch alone parse");
+        assert_eq!(parsed.worktree_override, None);
+        assert_eq!(parsed.directive, None);
+        assert!(parsed.background);
+    }
+
+    #[test]
+    fn parse_background_with_worktree_sets_both() {
+        let parsed = parse_fork_args("--worktree --background investigate")
+            .expect("--worktree --background parse");
+        assert_eq!(parsed.worktree_override, Some(true));
+        assert_eq!(parsed.directive.as_deref(), Some("investigate"));
+        assert!(parsed.background);
+    }
+
+    #[test]
+    fn parse_background_with_no_worktree_sets_both() {
+        let parsed = parse_fork_args("--no-worktree --background quick fix")
+            .expect("--no-worktree --background parse");
+        assert_eq!(parsed.worktree_override, Some(false));
+        assert_eq!(parsed.directive.as_deref(), Some("quick fix"));
+        assert!(parsed.background);
+    }
+
+    #[test]
+    fn parse_background_repeated_returns_error() {
+        let err = parse_fork_args("--background --background foo")
+            .expect_err("duplicate --background must error");
+        assert!(
+            err.contains("twice"),
+            "error should mention duplicate: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_stay_repeated_returns_error() {
+        let err = parse_fork_args("--stay --stay foo")
+            .expect_err("duplicate --stay must error");
+        assert!(
+            err.contains("twice"),
+            "error should mention duplicate: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_background_and_stay_returns_error() {
+        let err = parse_fork_args("--background --stay foo")
+            .expect_err("duplicate --background and --stay must error");
+        assert!(
+            err.contains("twice"),
+            "error should mention duplicate: {err}"
+        );
     }
 
     // -- ForkCommand SlashCommand impl ------------------------------------

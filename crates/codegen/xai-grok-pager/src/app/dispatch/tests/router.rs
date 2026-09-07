@@ -1918,6 +1918,7 @@ fn translate_local_submit_skipped_returns_changed_with_no_action() {
     );
     let kind = LocalQuestionKind::Fork {
         directive: Some("dropped".into()),
+        background: false,
     };
     let outcome = crate::app::agent_view::translate_local_submit_for_test(&state, kind, true);
     assert!(matches!(
@@ -1949,7 +1950,7 @@ fn translate_local_submit_no_selection_returns_changed_no_action() {
         vec![q],
         crate::views::prompt_widget::StashedPrompt::default(),
     );
-    let kind = LocalQuestionKind::Fork { directive: None };
+    let kind = LocalQuestionKind::Fork { directive: None, background: false };
     let outcome = crate::app::agent_view::translate_local_submit_for_test(&state, kind, false);
     assert!(matches!(
         outcome,
@@ -1981,7 +1982,7 @@ fn translate_local_submit_out_of_range_index_returns_changed_no_action() {
         crate::views::prompt_widget::StashedPrompt::default(),
     );
     state.selections[0] = crate::views::question_view::QuestionSelection::Single(Some(99));
-    let kind = LocalQuestionKind::Fork { directive: None };
+    let kind = LocalQuestionKind::Fork { directive: None, background: false };
     let outcome = crate::app::agent_view::translate_local_submit_for_test(&state, kind, false);
     assert!(matches!(
         outcome,

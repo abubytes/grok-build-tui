@@ -103,6 +103,9 @@ pub enum LocalQuestionKind {
         /// Optional directive supplied via `/fork <directive>`.
         /// Stashed here so the modal can carry it across the synchronous return path back to `dispatch_fork_resolved` without a global mailbox.
         directive: Option<String>,
+        /// When `true`, stay on the parent session instead of switching to the child.
+        /// When `false` (the default), switch to the child immediately (focus steal).
+        background: bool,
     },
     /// Modal opened by `/new` to resolve the worktree question.
     /// On submit, the selected option index is translated into an [`crate::app::actions::Action::NewSessionAnswered`].

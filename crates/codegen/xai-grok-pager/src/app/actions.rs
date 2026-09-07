@@ -728,6 +728,8 @@ pub enum Action {
         directive: Option<String>,
         /// When `Some`, also persist this worktree mode preference so future `/fork` invocations skip the popup.
         persist_mode: Option<crate::app::app_view::WorktreeMode>,
+        /// When `true`, stay on the parent session instead of switching to the child.
+        background: bool,
     },
     /// Submit-path action emitted by the local `/new` worktree question modal.
     /// `worktree: true` creates the new session in a worktree; `worktree: false` creates it in the current cwd.
