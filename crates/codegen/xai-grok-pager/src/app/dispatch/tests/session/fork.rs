@@ -512,7 +512,7 @@ fn dispatch_fork_no_flag_always_opens_question_modal() {
         .as_ref()
         .expect("modal must be open");
     match qv.local_kind.as_ref().expect("local_kind must be set") {
-        crate::views::question_view::LocalQuestionKind::Fork { directive } => {
+        crate::views::question_view::LocalQuestionKind::Fork { directive, background } => {
             assert_eq!(directive.as_deref(), Some("debug timeout"));
         }
         other => panic!("expected Fork, got {other:?}"),
@@ -895,6 +895,7 @@ fn dispatch_fork_answered_re_dispatches_to_dispatch_fork_resolved() {
             worktree: false,
             directive: Some("answered directive".into()),
             persist_mode: None,
+            background: false,
         },
         &mut app,
     );
@@ -915,6 +916,7 @@ fn dispatch_fork_answered_worktree_true_emits_create_worktree_session() {
             worktree: true,
             directive: None,
             persist_mode: None,
+            background: false,
         },
         &mut app,
     );
@@ -933,6 +935,7 @@ fn dispatch_fork_answered_worktree_false_emits_fork_session() {
             worktree: false,
             directive: None,
             persist_mode: None,
+            background: false,
         },
         &mut app,
     );
@@ -982,6 +985,7 @@ fn dispatch_fork_answered_with_persist_always_updates_mode_and_emits_effect() {
             worktree: true,
             directive: None,
             persist_mode: Some(crate::app::app_view::WorktreeMode::Always),
+            background: false,
         },
         &mut app,
     );
@@ -1357,6 +1361,7 @@ fn translate_local_submit_yes_returns_worktree_true_action() {
     )
     .with_local_kind(LocalQuestionKind::Fork {
         directive: Some("d".into()),
+        background: false,
     });
     // Set selection to option 0 ("Yes" in production).
     state.selections[0] = crate::views::question_view::QuestionSelection::Single(Some(0));
@@ -1367,10 +1372,12 @@ fn translate_local_submit_yes_returns_worktree_true_action() {
             worktree,
             directive,
             persist_mode,
+            background,
         }) => {
             assert!(worktree);
             assert_eq!(directive.as_deref(), Some("d"));
             assert!(persist_mode.is_none());
+            assert!(!background);
         }
         other => panic!("expected ForkAnswered, got {other:?}"),
     }
@@ -1400,7 +1407,7 @@ fn translate_local_submit_no_returns_worktree_false_action() {
         vec![q],
         crate::views::prompt_widget::StashedPrompt::default(),
     )
-    .with_local_kind(LocalQuestionKind::Fork { directive: None });
+    .with_local_kind(LocalQuestionKind::Fork { directive: None, background: false });
     // Option 1 is "No", so worktree=false
     state.selections[0] = crate::views::question_view::QuestionSelection::Single(Some(1));
     let kind = state.local_kind.take().unwrap();
@@ -1410,10 +1417,12 @@ fn translate_local_submit_no_returns_worktree_false_action() {
             worktree,
             directive,
             persist_mode,
+            background,
         }) => {
             assert!(!worktree);
             assert!(directive.is_none());
             assert!(persist_mode.is_none());
+            assert!(!background);
         }
         other => panic!("expected ForkAnswered, got {other:?}"),
     }
@@ -1443,7 +1452,7 @@ fn translate_local_submit_always_returns_persist_always_for_fork() {
         vec![q],
         crate::views::prompt_widget::StashedPrompt::default(),
     )
-    .with_local_kind(LocalQuestionKind::Fork { directive: None });
+    .with_local_kind(LocalQuestionKind::Fork { directive: None, background: false });
     state.selections[0] = crate::views::question_view::QuestionSelection::Single(Some(2));
     let kind = state.local_kind.take().unwrap();
     let outcome = crate::app::agent_view::translate_local_submit_for_test(&state, kind, false);
@@ -1487,7 +1496,7 @@ fn translate_local_submit_never_returns_persist_never_for_fork() {
         vec![q],
         crate::views::prompt_widget::StashedPrompt::default(),
     )
-    .with_local_kind(LocalQuestionKind::Fork { directive: None });
+    .with_local_kind(LocalQuestionKind::Fork { directive: None, background: false });
     state.selections[0] = crate::views::question_view::QuestionSelection::Single(Some(3));
     let kind = state.local_kind.take().unwrap();
     let outcome = crate::app::agent_view::translate_local_submit_for_test(&state, kind, false);
@@ -1534,6 +1543,7 @@ fn handle_ask_user_question_pushes_system_block_when_displaced_local_fork_modal(
         QuestionViewState::new("local-fork".into(), vec![q], stashed).with_local_kind(
             LocalQuestionKind::Fork {
                 directive: Some("dropped".into()),
+                background: false,
             },
         ),
     );
@@ -1570,4 +1580,105 @@ fn handle_ask_user_question_pushes_system_block_when_displaced_local_fork_modal(
         scrollback_len_before + 1,
         "exactly one system block pushed"
     );
+}
+
+#[test]
+fn dispatch_fork_background_flag_keeps_parent_active() {
+    let mut app = fork_test_app();
+    let effects = dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)),
+        &mut app,
+    );
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(0)),
+        "background fork must keep parent active, got {:?}",
+        app.active_view
+    );
+    assert!(
+        matches!(effects.as_slice(), [Effect::ForkSession { .. }]),
+        "fork effect must be emitted"
+    );
+    // Child agent exists but is not active.
+    assert!(app.agents.contains_key(&AgentId(1)));
+}
+
+#[test]
+fn dispatch_fork_background_flag_does_not_repoint_dashboard_attach() {
+    let mut app = fork_test_app();
+    ensure_dashboard_state(&mut app);
+    app.dashboard.as_mut().unwrap().attached_agent = Some(AgentId(0));
+
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)),
+        &mut app,
+    );
+
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(0)),
+        "background fork must keep parent active"
+    );
+    assert_eq!(
+        app.dashboard.as_ref().unwrap().attached_agent,
+        Some(AgentId(0)),
+        "attached_agent must remain on parent when background flag is set",
+    );
+}
+
+#[test]
+fn dispatch_fork_background_flag_shows_toast() {
+    let mut app = fork_test_app();
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)),
+        &mut app,
+    );
+    let toast = app
+        .agents
+        .get(&AgentId(0))
+        .and_then(|a| a.toast.as_ref())
+        .expect("toast should be set");
+    assert!(
+        toast.0.contains("Fork dispatched in background"),
+        "got: {}",
+        toast.0
+    );
+}
+
+#[test]
+fn dispatch_fork_background_flag_with_worktree() {
+    let mut app = fork_test_app();
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(true), None, true)),
+        &mut app,
+    );
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(0)),
+        "background fork with worktree must keep parent active"
+    );
+}
+
+#[test]
+fn dispatch_fork_without_background_flag_switches_to_child() {
+    let mut app = fork_test_app();
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, false)),
+        &mut app,
+    );
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(1)),
+        "non-background fork must switch to child"
+    );
+}
+
+// ── Test helpers ───────────────────────────────────────────────────────
+
+fn fork_args_with_background(
+    worktree: Option<bool>,
+    directive: Option<&str>,
+    background: bool,
+) -> crate::slash::commands::fork::ForkArgs {
+    crate::slash::commands::fork::ForkArgs {
+        worktree_override: worktree,
+        directive: directive.map(str::to_string),
+        background,
+    }
 }

@@ -78,6 +78,9 @@ cargo build -p xai-grok-pager-bin --release  # release binary: target/release/xa
 cargo check -p xai-grok-pager-bin            # fast validation
 ```
 
+Maintainers can also trigger the `release-linux` workflow from the GitHub
+Actions tab to build a Linux x64 release artifact.
+
 The binary artifact is named `xai-grok-pager`; official installs ship it as
 `grok`. On first launch it opens your browser to authenticate — see the
 [authentication guide](crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md).

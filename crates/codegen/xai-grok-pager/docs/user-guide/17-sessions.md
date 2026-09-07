@@ -117,10 +117,10 @@ When you launch `grok`, the welcome screen lists recent sessions for the current
 Branch the current session into a peer agent that starts from a copy of the conversation:
 
 ```
-/fork [--worktree|--no-worktree] [directive]
+/fork [--worktree|--no-worktree] [--background] [directive]
 ```
 
-Pass an optional `directive` to set the new session's first prompt. Use `--worktree` or `--no-worktree` to choose whether the fork runs in a new git worktree; omit both to be asked each time. The `--at <turn>` flag is not supported in this version.
+Pass an optional `directive` to set the new session's first prompt. Use `--worktree` or `--no-worktree` to choose whether the fork runs in a new git worktree; omit both to be asked each time. Use `--background` (aliases `--stay`, `--no-switch`) to stay on the current session instead of switching to the child; you can check the child later via `/dashboard` or `Ctrl+\`. The `--at <turn>` flag is not supported in this version.
 
 ### Rename
 

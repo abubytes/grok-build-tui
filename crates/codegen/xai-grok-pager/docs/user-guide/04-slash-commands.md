@@ -45,7 +45,13 @@ Show session details — auth method, model, turn count, and context usage. Alia
 
 ### `/fork`
 
-Branch the current session into a new agent, keeping history up to this point.
+Branch the current session into a new agent, keeping history up to this point. By default, the pager switches to the child session. Use `--background` to stay on the current session; check the child later via `/dashboard` or `Ctrl+\`.
+
+```
+/fork
+/fork --worktree investigate bug
+/fork --background continue in parallel
+```
 
 ### `/rewind` (alias: `/undo`)
 
