@@ -20,8 +20,10 @@ jobs:
 
       - name: Install dotslash
         run: |
-          curl -L https://github.com/facebook/dotslash/releases/download/v0.4.1/dotslash-linux.v0.4.1.tar.gz | tar xz
-          sudo mv dotslash /usr/local/bin/
+          curl -fsSL -o /tmp/dotslash.tar.gz \
+            https://github.com/facebook/dotslash/releases/download/v0.5.9/dotslash-ubuntu-22.04.x86_64.tar.gz
+          tar -xzf /tmp/dotslash.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/dotslash /usr/local/bin/dotslash
           dotslash --version
 
       - name: Verify protoc
