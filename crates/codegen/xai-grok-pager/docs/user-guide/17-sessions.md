@@ -118,9 +118,18 @@ Branch the current session into a peer agent that starts from a copy of the conv
 
 ```
 /fork [--worktree|--no-worktree] [--background] [directive]
+/bg [--worktree|--no-worktree] [directive]
 ```
 
-Pass an optional `directive` to set the new session's first prompt. Use `--worktree` or `--no-worktree` to choose whether the fork runs in a new git worktree; omit both to be asked each time. Use `--background` (aliases `--stay`, `--no-switch`) to stay on the current session instead of switching to the child; you can check the child later via `/dashboard` or `Ctrl+\`. The `--at <turn>` flag is not supported in this version.
+Pass an optional `directive` to set the new session's first prompt. Use `--worktree` or `--no-worktree` to choose whether the fork runs in a new git worktree; omit both to be asked each time.
+
+After the worktree decision is resolved, `/fork` (without a background flag) asks whether you want to switch to the forked session or stay on the current one:
+- **"Yes"** switches to the forked session immediately.
+- **"No"** keeps you on the current session; check the fork later via `/dashboard` or `Ctrl+\`.
+
+Use `--background` (aliases `--stay`, `--no-switch`) to skip this question and stay on the current session. Alternatively, use `/bg` to fork in the background without any question.
+
+The `--at <turn>` flag is not supported in this version.
 
 ### Rename
 

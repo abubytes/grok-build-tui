@@ -45,12 +45,22 @@ Show session details — auth method, model, turn count, and context usage. Alia
 
 ### `/fork`
 
-Branch the current session into a new agent, keeping history up to this point. By default, the pager switches to the child session. Use `--background` to stay on the current session; check the child later via `/dashboard` or `Ctrl+\`.
+Branch the current session into a new agent, keeping history up to this point. After choosing the worktree option, you'll be asked whether to open the forked session now or stay on the current session. Use `--background` (or `--stay`, `--no-switch`) to skip the question and stay on the current session; check the child later via `/dashboard` or `Ctrl+\`.
 
 ```
 /fork
 /fork --worktree investigate bug
 /fork --background continue in parallel
+```
+
+### `/bg`
+
+Fork the current session and stay here. This is a shorthand for `/fork --background` that always keeps you on the parent session.
+
+```
+/bg
+/bg --worktree explore alternative approach
+/bg --no-worktree quick experiment
 ```
 
 ### `/rewind` (alias: `/undo`)

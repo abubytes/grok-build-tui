@@ -55,7 +55,7 @@ use super::rewind::{
 };
 use super::session::foreign::dispatch_fetch_session_list;
 use super::session::fork::{
-    apply_persist_worktree_mode, dispatch_fork, dispatch_fork_resolved,
+    apply_persist_worktree_mode, dispatch_fork, dispatch_fork_final, dispatch_fork_resolved,
     dispatch_startup_fork_session,
 };
 use super::session::lifecycle::{
@@ -1253,6 +1253,11 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
             );
             effects
         }
+        Action::ForkSwitchAnswered {
+            worktree,
+            directive,
+            background,
+        } => dispatch_fork_final(app, worktree, directive, background),
         Action::NewSessionAnswered {
             worktree,
             persist_mode,
