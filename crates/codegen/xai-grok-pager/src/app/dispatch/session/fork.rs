@@ -150,14 +150,85 @@ fn open_fork_question(app: &mut AppView, directive: Option<String>, background: 
     agent.prompt.set_text("");
     vec![]
 }
-/// Construct the placeholder agent, push discoverability markers, flip the discovery gate, switch to the new agent, and emit the fork effect.
+/// Open the stay-or-switch question modal after the worktree decision is resolved.
+/// Refuses with a toast if a question is already on screen.
+fn open_fork_switch_question(
+    app: &mut AppView,
+    worktree: bool,
+    directive: Option<String>,
+) -> Vec<Effect> {
+    use crate::views::question_view::{LocalQuestionKind, QuestionViewState};
+    use xai_grok_tools::implementations::grok_build::ask_user_question::{
+        Question, QuestionOption,
+    };
+    let ActiveView::Agent(id) = app.active_view else {
+        return vec![];
+    };
+    let Some(agent) = app.agents.get_mut(&id) else {
+        return vec![];
+    };
+    if agent.question_view.is_some() {
+        app.show_toast("Finish answering the current question first");
+        return vec![];
+    }
+    let options = vec![
+        QuestionOption {
+            label: "Yes".into(),
+            description: "Leave this session and attach to the fork".into(),
+            preview: None,
+            id: None,
+        },
+        QuestionOption {
+            label: "No".into(),
+            description: "Keep this session; inspect the fork later via Ctrl+\\ /dashboard".into(),
+            preview: None,
+            id: None,
+        },
+    ];
+    let question = Question {
+        question: "Open the forked session now?".into(),
+        id: None,
+        options,
+        multi_select: Some(false),
+    };
+    let agent = app.agents.get_mut(&id).expect("agent present (re-borrow)");
+    let stashed = agent.prompt.stash();
+    let state = QuestionViewState::new(
+        format!("fork-switch-{}", uuid::Uuid::new_v4()),
+        vec![question],
+        stashed,
+    )
+    .with_local_kind(LocalQuestionKind::ForkSwitch { worktree, directive });
+    agent.question_view = Some(state);
+    agent.prompt.set_text("");
+    vec![]
+}
+/// Worktree decision is resolved; either open the stay-or-switch question or create the fork immediately.
+/// When `background == true` (from `/bg` or `--background` flag), creates the fork and stays on parent.
+/// When `background == false`, opens the stay-or-switch question modal.
+pub(in crate::app::dispatch) fn dispatch_fork_resolved(
+    app: &mut AppView,
+    worktree: bool,
+    directive: Option<String>,
+    background: bool,
+) -> Vec<Effect> {
+    if background {
+        // Background flag was explicit; skip the switch question and create the fork
+        dispatch_fork_final(app, worktree, directive, true)
+    } else {
+        // No background flag; ask whether to switch or stay
+        open_fork_switch_question(app, worktree, directive)
+    }
+}
+/// Construct the placeholder agent, push discoverability markers, switch or stay, and emit the fork effect.
+/// This is the final step after all questions (worktree and switch) are resolved.
 ///
 /// `worktree == true` reuses the [`Effect::CreateWorktreeSession`] pipeline (with `load_session_id` set to the parent session id).
 /// `worktree == false` emits [`Effect::ForkSession`], which calls `x.ai/session/fork` directly.
 ///
 /// When `background == true`, the active view stays on the parent and the dashboard `attached_agent` is not re-pointed.
-/// When `background == false` (the default), the active view switches to the child and dashboard attach follows.
-pub(in crate::app::dispatch) fn dispatch_fork_resolved(
+/// When `background == false`, the active view switches to the child and dashboard attach follows.
+pub(crate) fn dispatch_fork_final(
     app: &mut AppView,
     worktree: bool,
     directive: Option<String>,

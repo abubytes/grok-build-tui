@@ -731,6 +731,15 @@ pub enum Action {
         /// When `true`, stay on the parent session instead of switching to the child.
         background: bool,
     },
+    /// User answered the stay-or-switch question shown by `/fork` (when no `--background` flag was given).
+    /// The worktree decision was already resolved in the previous modal or by flags.
+    ForkSwitchAnswered {
+        worktree: bool,
+        directive: Option<String>,
+        /// When `true`, stay on the parent session instead of switching to the child.
+        /// When `false`, switch to the child immediately (focus steal).
+        background: bool,
+    },
     /// Submit-path action emitted by the local `/new` worktree question modal.
     /// `worktree: true` creates the new session in a worktree; `worktree: false` creates it in the current cwd.
     NewSessionAnswered {

@@ -1880,6 +1880,20 @@ fn translate_local_submit(
                 background,
             })
         }
+        LocalQuestionKind::ForkSwitch { worktree, directive } => {
+            // Option 0: "Yes" -> switch to child (background = false)
+            // Option 1: "No" -> stay on parent (background = true)
+            let background = match *idx {
+                0 => false,
+                1 => true,
+                _ => return InputOutcome::Changed,
+            };
+            InputOutcome::Action(Action::ForkSwitchAnswered {
+                worktree,
+                directive,
+                background,
+            })
+        }
         LocalQuestionKind::NewSession => {
             let Some((worktree, persist_mode)) = worktree_choice_from_index(*idx) else {
                 return InputOutcome::Changed;

@@ -107,6 +107,14 @@ pub enum LocalQuestionKind {
         /// When `false` (the default), switch to the child immediately (focus steal).
         background: bool,
     },
+    /// Modal opened after the worktree question is resolved to ask whether to switch to the forked session or stay on the parent.
+    /// On submit, the selected option is translated into an [`crate::app::actions::Action::ForkSwitchAnswered`].
+    ForkSwitch {
+        /// Whether the fork will use a worktree (already resolved from the previous question or flags).
+        worktree: bool,
+        /// Optional directive supplied via `/fork <directive>`.
+        directive: Option<String>,
+    },
     /// Modal opened by `/new` to resolve the worktree question.
     /// On submit, the selected option index is translated into an [`crate::app::actions::Action::NewSessionAnswered`].
     NewSession,

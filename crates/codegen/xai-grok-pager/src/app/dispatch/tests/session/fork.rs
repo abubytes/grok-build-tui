@@ -426,27 +426,28 @@ fn dispatch_fork_without_session_id_toasts_and_returns_no_effect() {
 }
 
 #[test]
-fn dispatch_fork_worktree_flag_skips_modal() {
+fn dispatch_fork_worktree_flag_skips_worktree_modal_opens_switch_question() {
     let mut app = fork_test_app();
     let effects = dispatch(Action::Fork(fork_args(Some(true), None)), &mut app);
-    assert!(matches!(
-        effects.as_slice(),
-        [Effect::CreateWorktreeSession { .. }]
-    ));
+    // Should open switch question, not create fork yet
+    assert!(effects.is_empty(), "--worktree without --background opens switch question");
+    let agent = app.agents.get(&AgentId(0)).expect("parent agent");
     assert!(
-        app.agents.values().all(|a| a.question_view.is_none()),
-        "--worktree must skip the modal"
+        agent.question_view.is_some(),
+        "--worktree without --background should open switch question"
     );
 }
 
 #[test]
-fn dispatch_fork_no_worktree_flag_skips_modal() {
+fn dispatch_fork_no_worktree_flag_skips_worktree_modal_opens_switch_question() {
     let mut app = fork_test_app();
     let effects = dispatch(Action::Fork(fork_args(Some(false), None)), &mut app);
-    assert!(matches!(effects.as_slice(), [Effect::ForkSession { .. }]));
+    // Should open switch question, not create fork yet
+    assert!(effects.is_empty(), "--no-worktree without --background opens switch question");
+    let agent = app.agents.get(&AgentId(0)).expect("parent agent");
     assert!(
-        app.agents.values().all(|a| a.question_view.is_none()),
-        "--no-worktree must skip the modal"
+        agent.question_view.is_some(),
+        "--no-worktree without --background should open switch question"
     );
 }
 
@@ -618,14 +619,22 @@ fn dispatch_fork_sets_forked_from_on_new_agent() {
     assert_eq!(new_agent.session.forked_from, Some(AgentId(0)));
 }
 
-/// Dashboard attach follows the forked child.
+/// Dashboard attach follows the forked child when switching to it.
 #[test]
 fn dispatch_fork_repoints_dashboard_attached_agent_to_child() {
     let mut app = fork_test_app();
     ensure_dashboard_state(&mut app);
     app.dashboard.as_mut().unwrap().attached_agent = Some(AgentId(0));
 
-    dispatch(Action::Fork(fork_args(Some(false), None)), &mut app);
+    // Use ForkSwitchAnswered with background=false to test switch behavior
+    dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: false,
+            directive: None,
+            background: false, // Switch to child
+        },
+        &mut app,
+    );
 
     assert!(
         matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(1)),
@@ -663,7 +672,15 @@ fn dispatch_fork_keeps_stale_attach_on_other_agent() {
     ensure_dashboard_state(&mut app);
     app.dashboard.as_mut().unwrap().attached_agent = Some(AgentId(1));
 
-    dispatch(Action::Fork(fork_args(Some(false), None)), &mut app);
+    // Use ForkSwitchAnswered with background=false to test switch behavior
+    dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: false,
+            directive: None,
+            background: false, // Switch to child
+        },
+        &mut app,
+    );
 
     assert!(
         matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(2)),
@@ -899,17 +916,29 @@ fn dispatch_fork_answered_re_dispatches_to_dispatch_fork_resolved() {
         },
         &mut app,
     );
-    assert!(matches!(effects.as_slice(), [Effect::ForkSession { .. }]));
-    let new_agent = app.agents.get(&AgentId(1)).expect("fork created");
-    assert_eq!(
-        new_agent.pending_first_prompt.as_deref(),
-        Some("answered directive")
+    // Should open switch question, not create fork yet
+    assert!(effects.is_empty(), "ForkAnswered without background opens switch question");
+    let agent = app.agents.get(&AgentId(0)).expect("parent agent");
+    assert!(
+        agent.question_view.is_some(),
+        "ForkAnswered without background should open switch question"
+    );
+    let qv = agent.question_view.as_ref().unwrap();
+    assert!(
+        matches!(
+            qv.local_kind.as_ref(),
+            Some(crate::views::question_view::LocalQuestionKind::ForkSwitch {
+                directive: Some(d),
+                ..
+            }) if d == "answered directive"
+        ),
+        "directive should be carried through to switch question"
     );
 }
 
-/// `Action::ForkAnswered { worktree: true, .. }` produces the `CreateWorktreeSession` effect (the "Yes" submit path).
+/// `Action::ForkAnswered { worktree: true, background: false }` opens the switch question (worktree already resolved).
 #[test]
-fn dispatch_fork_answered_worktree_true_emits_create_worktree_session() {
+fn dispatch_fork_answered_worktree_true_opens_switch_question() {
     let mut app = fork_test_app();
     let effects = dispatch(
         Action::ForkAnswered {
@@ -920,15 +949,17 @@ fn dispatch_fork_answered_worktree_true_emits_create_worktree_session() {
         },
         &mut app,
     );
-    assert!(matches!(
-        effects.as_slice(),
-        [Effect::CreateWorktreeSession { .. }]
-    ));
+    assert!(effects.is_empty(), "ForkAnswered without background opens switch question");
+    let agent = app.agents.get(&AgentId(0)).expect("parent agent");
+    assert!(
+        agent.question_view.is_some(),
+        "ForkAnswered without background should open switch question"
+    );
 }
 
-/// `Action::ForkAnswered { worktree: false, .. }` produces the `ForkSession` effect (the "No" submit path).
+/// `Action::ForkAnswered { worktree: false, background: false }` opens the switch question.
 #[test]
-fn dispatch_fork_answered_worktree_false_emits_fork_session() {
+fn dispatch_fork_answered_worktree_false_opens_switch_question() {
     let mut app = fork_test_app();
     let effects = dispatch(
         Action::ForkAnswered {
@@ -936,6 +967,46 @@ fn dispatch_fork_answered_worktree_false_emits_fork_session() {
             directive: None,
             persist_mode: None,
             background: false,
+        },
+        &mut app,
+    );
+    assert!(effects.is_empty(), "ForkAnswered without background opens switch question");
+    let agent = app.agents.get(&AgentId(0)).expect("parent agent");
+    assert!(
+        agent.question_view.is_some(),
+        "ForkAnswered without background should open switch question"
+    );
+}
+
+/// `Action::ForkAnswered { worktree: true, background: true }` produces the `CreateWorktreeSession` effect directly.
+#[test]
+fn dispatch_fork_answered_worktree_true_background_emits_create_worktree_session() {
+    let mut app = fork_test_app();
+    let effects = dispatch(
+        Action::ForkAnswered {
+            worktree: true,
+            directive: None,
+            persist_mode: None,
+            background: true,
+        },
+        &mut app,
+    );
+    assert!(matches!(
+        effects.as_slice(),
+        [Effect::CreateWorktreeSession { .. }]
+    ));
+}
+
+/// `Action::ForkAnswered { worktree: false, background: true }` produces the `ForkSession` effect directly.
+#[test]
+fn dispatch_fork_answered_worktree_false_background_emits_fork_session() {
+    let mut app = fork_test_app();
+    let effects = dispatch(
+        Action::ForkAnswered {
+            worktree: false,
+            directive: None,
+            persist_mode: None,
+            background: true,
         },
         &mut app,
     );
@@ -1657,15 +1728,239 @@ fn dispatch_fork_background_flag_with_worktree() {
 }
 
 #[test]
-fn dispatch_fork_without_background_flag_switches_to_child() {
+fn dispatch_fork_without_background_flag_opens_switch_question() {
     let mut app = fork_test_app();
     dispatch(
         Action::Fork(fork_args_with_background(Some(false), None, false)),
         &mut app,
     );
+    // Should stay on parent and open the switch question
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(0)),
+        "fork without background flag should keep parent active while question is open"
+    );
+    let agent = app.agents.get(&AgentId(0)).expect("parent agent");
+    assert!(
+        agent.question_view.is_some(),
+        "switch question should be open"
+    );
+    let qv = agent.question_view.as_ref().unwrap();
+    assert!(
+        matches!(
+            qv.local_kind.as_ref(),
+            Some(crate::views::question_view::LocalQuestionKind::ForkSwitch { worktree: false, .. })
+        ),
+        "question should be ForkSwitch kind with worktree=false"
+    );
+}
+
+#[test]
+fn dispatch_fork_switch_question_yes_switches_to_child() {
+    let mut app = fork_test_app();
+    let effects = dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: false,
+            directive: Some("test directive".into()),
+            background: false, // Yes answer
+        },
+        &mut app,
+    );
     assert!(
         matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(1)),
-        "non-background fork must switch to child"
+        "answering Yes should switch to child"
+    );
+    assert!(
+        matches!(effects.as_slice(), [Effect::ForkSession { .. }]),
+        "fork effect should be emitted"
+    );
+}
+
+#[test]
+fn dispatch_fork_switch_question_no_stays_on_parent() {
+    let mut app = fork_test_app();
+    let effects = dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: false,
+            directive: None,
+            background: true, // No answer
+        },
+        &mut app,
+    );
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(0)),
+        "answering No should stay on parent"
+    );
+    assert!(
+        matches!(effects.as_slice(), [Effect::ForkSession { .. }]),
+        "fork effect should still be emitted"
+    );
+    // Child agent should exist
+    assert!(app.agents.contains_key(&AgentId(1)));
+}
+
+#[test]
+fn dispatch_fork_switch_question_no_shows_toast() {
+    let mut app = fork_test_app();
+    dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: false,
+            directive: None,
+            background: true, // No answer
+        },
+        &mut app,
+    );
+    let toast = app
+        .agents
+        .get(&AgentId(0))
+        .and_then(|a| a.toast.as_ref())
+        .expect("toast should be set");
+    assert!(
+        toast.0.contains("Fork dispatched in background"),
+        "got: {}",
+        toast.0
+    );
+}
+
+#[test]
+fn dispatch_fork_switch_question_with_worktree() {
+    let mut app = fork_test_app();
+    let effects = dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: true,
+            directive: Some("worktree test".into()),
+            background: false, // Yes answer
+        },
+        &mut app,
+    );
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(1)),
+        "answering Yes should switch to child"
+    );
+    assert!(
+        matches!(effects.as_slice(), [Effect::CreateWorktreeSession { .. }]),
+        "CreateWorktreeSession effect should be emitted for worktree fork"
+    );
+}
+
+#[test]
+fn translate_local_submit_fork_switch_yes_returns_false_background() {
+    use crate::app::agent_view::translate_local_submit_for_test;
+    use crate::views::question_view::{LocalQuestionKind, QuestionViewState};
+
+    let stashed = crate::views::prompt_widget::StashedPrompt::default();
+    let mut qv = QuestionViewState::new("test-id".into(), vec![], stashed);
+    qv.selections.push(crate::views::question_view::QuestionSelection::Single(Some(0))); // Option 0 = Yes
+    
+    let kind = LocalQuestionKind::ForkSwitch {
+        worktree: false,
+        directive: Some("test".into()),
+    };
+    
+    match translate_local_submit_for_test(&qv, kind, false) {
+        crate::app::app_view::InputOutcome::Action(Action::ForkSwitchAnswered {
+            background,
+            ..
+        }) => {
+            assert!(!background, "option 0 (Yes) should set background=false");
+        }
+        other => panic!("expected ForkSwitchAnswered, got {other:?}"),
+    }
+}
+
+#[test]
+fn translate_local_submit_fork_switch_no_returns_true_background() {
+    use crate::app::agent_view::translate_local_submit_for_test;
+    use crate::views::question_view::{LocalQuestionKind, QuestionViewState};
+
+    let stashed = crate::views::prompt_widget::StashedPrompt::default();
+    let mut qv = QuestionViewState::new("test-id".into(), vec![], stashed);
+    qv.selections.push(crate::views::question_view::QuestionSelection::Single(Some(1))); // Option 1 = No
+    
+    let kind = LocalQuestionKind::ForkSwitch {
+        worktree: true,
+        directive: None,
+    };
+    
+    match translate_local_submit_for_test(&qv, kind, false) {
+        crate::app::app_view::InputOutcome::Action(Action::ForkSwitchAnswered {
+            background,
+            worktree,
+            ..
+        }) => {
+            assert!(background, "option 1 (No) should set background=true");
+            assert!(worktree, "worktree should be preserved from question");
+        }
+        other => panic!("expected ForkSwitchAnswered, got {other:?}"),
+    }
+}
+
+// ── /bg command tests ──────────────────────────────────────────────────
+
+#[test]
+fn bg_command_forces_background_true() {
+    use crate::slash::commands::bg::BgCommand;
+    use crate::slash::command::SlashCommand;
+    use crate::acp::model_state::ModelState;
+
+    let models = ModelState::default();
+    let bundle = Box::leak(Box::new(crate::app::bundle::BundleState::default()));
+    let mut ctx = crate::slash::command::CommandExecCtx {
+        models: &models,
+        session_id: None,
+        bundle_state: bundle,
+        screen_mode: crate::app::ScreenMode::Inline,
+        billing_surface_visible: true,
+        usage_command_visible: true,
+        pager_state: crate::settings::PagerLocalSnapshot {
+            multiline_mode: false,
+            yolo_mode: false,
+            ..crate::settings::PagerLocalSnapshot::default()
+        },
+    };
+
+    let cmd = BgCommand;
+    match cmd.run(&mut ctx, "") {
+        crate::slash::command::CommandResult::Action(Action::Fork(args)) => {
+            assert!(args.background, "/bg must force background=true");
+        }
+        other => panic!("expected Action(Fork(..)), got {other:?}"),
+    }
+}
+
+#[test]
+fn bg_command_keeps_parent_active_no_switch_question() {
+    let mut app = fork_test_app();
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)), // background=true simulates /bg
+        &mut app,
+    );
+    // Should stay on parent and NOT open switch question
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(0)),
+        "/bg should keep parent active"
+    );
+    let agent = app.agents.get(&AgentId(0)).expect("parent agent");
+    assert!(
+        agent.question_view.is_none(),
+        "/bg should not open switch question"
+    );
+}
+
+#[test]
+fn bg_command_with_worktree_flag() {
+    let mut app = fork_test_app();
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(true), Some("test directive"), true)),
+        &mut app,
+    );
+    assert!(
+        matches!(app.active_view, ActiveView::Agent(id) if id == AgentId(0)),
+        "/bg --worktree should keep parent active"
+    );
+    let agent = app.agents.get(&AgentId(0)).expect("parent agent");
+    assert!(
+        agent.question_view.is_none(),
+        "/bg should not open any question"
     );
 }
 
