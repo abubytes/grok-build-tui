@@ -544,16 +544,35 @@ fn dispatch_fork_no_flag_non_git_skips_modal_and_forks_without_worktree() {
         Action::Fork(fork_args(None, Some("explore offline"))),
         &mut app,
     );
-    // Must skip the modal and emit ForkSession immediately.
+    // Non-git cwd skips the worktree question, then asks stay-or-switch.
+    assert!(effects.is_empty(), "no effects until switch question answered");
+    let Some(qv) = app
+        .agents
+        .get(&AgentId(0))
+        .and_then(|a| a.question_view.as_ref())
+    else {
+        panic!("stay-or-switch question must open when worktree is already decided");
+    };
+    assert!(
+        matches!(
+            qv.local_kind.as_ref(),
+            Some(crate::views::question_view::LocalQuestionKind::ForkSwitch { worktree: false, .. })
+        ),
+        "expected ForkSwitch with worktree=false, got {:?}",
+        qv.local_kind
+    );
+    let effects = dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: false,
+            directive: Some("explore offline".into()),
+            background: false,
+        },
+        &mut app,
+    );
     assert!(
         matches!(effects.as_slice(), [Effect::ForkSession { .. }]),
-        "non-git cwd must skip modal and emit ForkSession, got {effects:?}"
+        "answering switch must emit ForkSession, got {effects:?}"
     );
-    assert!(
-        app.agents.values().all(|a| a.question_view.is_none()),
-        "non-git cwd must not open the modal"
-    );
-    // Directive must still reach the new agent.
     let new_agent = app.agents.get(&AgentId(1)).expect("fork agent created");
     assert_eq!(
         new_agent.pending_first_prompt.as_deref(),
@@ -641,7 +660,10 @@ fn open_fork_question_refuses_when_existing_question_is_open() {
 #[test]
 fn dispatch_fork_resolved_no_worktree_emits_fork_effect() {
     let mut app = fork_test_app();
-    let effects = dispatch(Action::Fork(fork_args(Some(false), None)), &mut app);
+    let effects = dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)),
+        &mut app,
+    );
     match effects.as_slice() {
         [
             Effect::ForkSession {
@@ -664,7 +686,10 @@ fn dispatch_fork_resolved_no_worktree_emits_fork_effect() {
 #[test]
 fn dispatch_fork_resolved_worktree_reuses_create_worktree_session() {
     let mut app = fork_test_app();
-    let effects = dispatch(Action::Fork(fork_args(Some(true), None)), &mut app);
+    let effects = dispatch(
+        Action::Fork(fork_args_with_background(Some(true), None, true)),
+        &mut app,
+    );
     match effects.as_slice() {
         [
             Effect::CreateWorktreeSession {
@@ -683,7 +708,10 @@ fn dispatch_fork_resolved_worktree_reuses_create_worktree_session() {
 #[test]
 fn dispatch_fork_sets_forked_from_on_new_agent() {
     let mut app = fork_test_app();
-    dispatch(Action::Fork(fork_args(Some(false), None)), &mut app);
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)),
+        &mut app,
+    );
     let new_agent = app.agents.get(&AgentId(1)).expect("fork agent created");
     assert_eq!(new_agent.session.forked_from, Some(AgentId(0)));
 }
@@ -766,7 +794,11 @@ fn dispatch_fork_keeps_stale_attach_on_other_agent() {
 fn dispatch_fork_pushes_parent_marker_with_directive() {
     let mut app = fork_test_app();
     dispatch(
-        Action::Fork(fork_args(Some(false), Some("investigate races"))),
+        Action::Fork(fork_args_with_background(
+            Some(false),
+            Some("investigate races"),
+            true,
+        )),
         &mut app,
     );
     // Last system block on parent is the fork marker.
@@ -784,7 +816,10 @@ fn dispatch_fork_pushes_parent_marker_with_directive() {
 #[test]
 fn dispatch_fork_pushes_parent_marker_without_directive() {
     let mut app = fork_test_app();
-    dispatch(Action::Fork(fork_args(Some(false), None)), &mut app);
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)),
+        &mut app,
+    );
     // Last system block on parent is the fork marker.
     let parent_text = last_system_text(&app, AgentId(0));
     assert_eq!(parent_text, "Forked", "got: {parent_text}");
@@ -793,7 +828,10 @@ fn dispatch_fork_pushes_parent_marker_without_directive() {
 #[test]
 fn dispatch_fork_defers_banner_worktree() {
     let mut app = fork_test_app();
-    dispatch(Action::Fork(fork_args(Some(true), None)), &mut app);
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(true), None, true)),
+        &mut app,
+    );
     let Some(info) = app
         .agents
         .get(&AgentId(1))
@@ -808,7 +846,10 @@ fn dispatch_fork_defers_banner_worktree() {
 #[test]
 fn dispatch_fork_defers_banner_no_worktree() {
     let mut app = fork_test_app();
-    dispatch(Action::Fork(fork_args(Some(false), None)), &mut app);
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)),
+        &mut app,
+    );
     let Some(info) = app
         .agents
         .get(&AgentId(1))
@@ -824,7 +865,10 @@ fn dispatch_fork_defers_banner_no_worktree() {
 fn dispatch_fork_stores_full_parent_session_id_in_banner() {
     let mut app = fork_test_app();
     app.agents.get_mut(&AgentId(0)).unwrap().session.session_id = Some("abcdef0123456789".into());
-    dispatch(Action::Fork(fork_args(Some(true), None)), &mut app);
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(true), None, true)),
+        &mut app,
+    );
     let Some(info) = app
         .agents
         .get(&AgentId(1))
@@ -925,7 +969,10 @@ fn build_child_fork_marker_minimal_mode_advertises_resume() {
 #[test]
 fn dispatch_fork_pushes_progress_message_worktree() {
     let mut app = fork_test_app();
-    dispatch(Action::Fork(fork_args(Some(true), None)), &mut app);
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(true), None, true)),
+        &mut app,
+    );
     let progress = last_system_text(&app, AgentId(1));
     assert_eq!(progress, "Creating worktree\u{2026}");
 }
@@ -934,7 +981,11 @@ fn dispatch_fork_pushes_progress_message_worktree() {
 fn dispatch_fork_stashes_directive_in_pending_first_prompt() {
     let mut app = fork_test_app();
     dispatch(
-        Action::Fork(fork_args(Some(false), Some("first prompt text"))),
+        Action::Fork(fork_args_with_background(
+            Some(false),
+            Some("first prompt text"),
+            true,
+        )),
         &mut app,
     );
     let new_agent = app.agents.get(&AgentId(1)).unwrap();
@@ -962,7 +1013,10 @@ fn dispatch_fork_inherits_appearance_sharing_and_plugin_visibility() {
         topup_amount_cents: Some(2000),
         max_amount_cents: None,
     });
-    dispatch(Action::Fork(fork_args(Some(false), None)), &mut app);
+    dispatch(
+        Action::Fork(fork_args_with_background(Some(false), None, true)),
+        &mut app,
+    );
     let new_agent = app.agents.get(&AgentId(1)).unwrap();
     assert!(!new_agent.sharing_enabled);
     assert!(
@@ -1098,11 +1152,29 @@ fn dispatch_fork_worktree_mode_always_skips_modal_and_creates_worktree() {
     let mut app = fork_test_app();
     app.fork_worktree_mode = crate::app::app_view::WorktreeMode::Always;
     let effects = dispatch(Action::Fork(fork_args(None, None)), &mut app);
+    assert!(effects.is_empty(), "worktree Always still asks stay-or-switch");
+    let Some(qv) = app
+        .agents
+        .get(&AgentId(0))
+        .and_then(|a| a.question_view.as_ref())
+    else {
+        panic!("stay-or-switch question must open when fork_worktree_mode is Always");
+    };
     assert!(
-        app.agents
-            .get(&AgentId(0))
-            .is_some_and(|a| a.question_view.is_none()),
-        "modal must not open when fork_worktree_mode is Always"
+        matches!(
+            qv.local_kind.as_ref(),
+            Some(crate::views::question_view::LocalQuestionKind::ForkSwitch { worktree: true, .. })
+        ),
+        "expected ForkSwitch with worktree=true, got {:?}",
+        qv.local_kind
+    );
+    let effects = dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: true,
+            directive: None,
+            background: false,
+        },
+        &mut app,
     );
     assert!(
         effects
@@ -1117,11 +1189,29 @@ fn dispatch_fork_worktree_mode_never_skips_modal_and_forks_in_cwd() {
     let mut app = fork_test_app();
     app.fork_worktree_mode = crate::app::app_view::WorktreeMode::Never;
     let effects = dispatch(Action::Fork(fork_args(None, None)), &mut app);
+    assert!(effects.is_empty(), "worktree Never still asks stay-or-switch");
+    let Some(qv) = app
+        .agents
+        .get(&AgentId(0))
+        .and_then(|a| a.question_view.as_ref())
+    else {
+        panic!("stay-or-switch question must open when fork_worktree_mode is Never");
+    };
     assert!(
-        app.agents
-            .get(&AgentId(0))
-            .is_some_and(|a| a.question_view.is_none()),
-        "modal must not open when fork_worktree_mode is Never"
+        matches!(
+            qv.local_kind.as_ref(),
+            Some(crate::views::question_view::LocalQuestionKind::ForkSwitch { worktree: false, .. })
+        ),
+        "expected ForkSwitch with worktree=false, got {:?}",
+        qv.local_kind
+    );
+    let effects = dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: false,
+            directive: None,
+            background: false,
+        },
+        &mut app,
     );
     assert!(
         effects

@@ -682,10 +682,18 @@ fn local_slash_command_keeps_hook_block_hold() {
 }
 use crate::slash::commands::fork::ForkArgs;
 fn fork_args(worktree_override: Option<bool>, directive: Option<&str>) -> ForkArgs {
+    fork_args_with_background(worktree_override, directive, false)
+}
+
+fn fork_args_with_background(
+    worktree_override: Option<bool>,
+    directive: Option<&str>,
+    background: bool,
+) -> ForkArgs {
     ForkArgs {
         worktree_override,
         directive: directive.map(String::from),
-        background: false,
+        background,
     }
 }
 /// Build a single-agent app for the `/fork` dispatcher tests.

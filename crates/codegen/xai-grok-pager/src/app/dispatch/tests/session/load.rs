@@ -936,7 +936,11 @@ fn auth_complete_restores_view_after_mid_session_login() {
 fn session_loaded_drains_pending_first_prompt_to_front() {
     let mut app = fork_test_app();
     dispatch(
-        Action::Fork(fork_args(Some(false), Some("first directive"))),
+        Action::Fork(fork_args_with_background(
+            Some(false),
+            Some("first directive"),
+            true,
+        )),
         &mut app,
     );
     let new_id = AgentId(1);

@@ -1879,6 +1879,31 @@ fn dispatch_fork_no_flag_always_reopens_modal_after_previous_answer() {
         "submit must clear question_view on the parent agent"
     );
     let effects = dispatch(inner, &mut app);
+    assert!(
+        effects.is_empty(),
+        "ForkAnswered without --background opens stay-or-switch, got {effects:?}"
+    );
+    let q_switch = agent_ref(&app, AgentId(0))
+        .question_view
+        .as_ref()
+        .expect("stay-or-switch question after worktree answer");
+    assert!(
+        matches!(
+            q_switch.local_kind.as_ref(),
+            Some(crate::views::question_view::LocalQuestionKind::ForkSwitch { worktree: true, .. })
+        ),
+        "expected ForkSwitch with worktree=true"
+    );
+    // Submit clears the modal before the answered action is dispatched.
+    app.agents.get_mut(&AgentId(0)).unwrap().question_view = None;
+    let effects = dispatch(
+        Action::ForkSwitchAnswered {
+            worktree: true,
+            directive: None,
+            background: false,
+        },
+        &mut app,
+    );
     assert!(matches!(
         effects.as_slice(),
         [Effect::CreateWorktreeSession { .. }]
